@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Camel Variants</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: linear-gradient(to bottom, #87CEEB, #E0F7FA); }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #5d4037;
+            font-family: 'Segoe UI', sans-serif;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 15px;
+            border-radius: 10px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>Đàn Lạc Đà Low Poly:</b><br>
+        1. Lạc đà "Lực sĩ" (1 bướu, to lớn)<br>
+        2. Lạc đà con (Nhỏ nhắn, chân ngắn)<br>
+        3. Lạc đà Tuyết (Trắng, lông dày)
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- CÀI ĐẶT CƠ BẢN ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(8, 5, 10);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- ÁNH SÁNG ---
+        scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+        const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+        sun.position.set(10, 20, 10);
+        sun.castShadow = true;
+        scene.add(sun);
+
+        // --- MẶT ĐẤT ---
+        const ground = new THREE.Mesh(
+            new THREE.PlaneGeometry(100, 100),
+            new THREE.MeshLambertMaterial({ color: 0xEDC9AF })
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.y = -2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // --- HÀM TẠO LẠC ĐÀ ---
+        function createCamel(type) {
+            const group = new THREE.Group();
+            let config = {
+                color: 0xD2B48C,
+                scale: 1,
+                humps: 2,
+                bodyScale: [2, 1.3, 1.2],
+                neckLen: 1.2,
+                legH: 1.5
+            };
+
+            if (type === 'TANK') {
+                config = { color: 0x8B5A2B, scale: 1.3, humps: 1, bodyScale: [2.2, 1.5, 1.5], neckLen: 1.4, legH: 1.6 };
+            } else if (type === 'BABY') {
+                config = { color: 0xE6C291, scale: 0.6, humps: 2, bodyScale: [1.8, 1.2, 1.1], neckLen: 1.0, legH: 0.9 };
+            } else if (type === 'SNOW') {
+                config = { color: 0xF5F5F5, scale: 1, humps: 2, bodyScale: [2, 1.4, 1.3], neckLen: 0.8, legH: 1.3 };
+            }
+
+            const mat = new THREE.MeshPhongMaterial({ color: config.color, flatShading: true });
+
+            // Thân
+            const body = new THREE.Mesh(new THREE.BoxGeometry(...config.bodyScale), mat);
+            body.castShadow = true;
+            group.add(body);
+
+            // Bướu
+            if (config.humps === 1) {
+                const h = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.7, 0.8, 6), mat);
+                h.position.y = config.bodyScale[1]/2 + 0.3;
+                group.add(h);
+            } else {
+                [-0.4, 0.4].forEach(x => {
+                    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, 0.6, 6), mat);
+                    h.position.set(x, config.bodyScale[1]/2 + 0.2, 0);
+                    group.add(h);
+                });
+            }
+
+            // Cổ & Đầu
+            const neckGroup = new THREE.Group();
+            const neck = new THREE.Mesh(new THREE.BoxGeometry(0.5, config.neckLen, 0.5), mat);
+            neck.position.set(config.bodyScale[0]/2 + 0.2, 0.5, 0);
+            neck.rotation.z = -Math.PI / 4;
+            neckGroup.add(neck);
+
+            const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), mat);
+            head.position.set(config.bodyScale[0]/2 + 0.7, 1.1, 0);
+            neckGroup.add(head);
+            group.add(neckGroup);
+
+            // Chân
+            const legGeom = new THREE.BoxGeometry(0.2, config.legH, 0.2);
+            const legs = [];
+            const positions = [[0.7, 0.4], [0.7, -0.4], [-0.7, 0.4], [-0.7, -0.4]];
+            positions.forEach(p => {
+                const leg = new THREE.Mesh(legGeom, mat);
+                leg.position.set(p[0], -config.bodyScale[1]/2 - config.legH/2 + 0.2, p[1]);
+                leg.castShadow = true;
+                group.add(leg);
+                legs.push(leg);
+            });
+
+            group.scale.set(config.scale, config.scale, config.scale);
+            
+            // Trả về object chứa cả group và các bộ phận cần animation
+            return { mesh: group, legs, neckGroup, type };
+        }
+
+        // Tạo 3 biến thể
+        const camels = [
+            { data: createCamel('TANK'), pos: [0, 0, -3] },
+            { data: createCamel('BABY'), pos: [-3, -0.5, 1] },
+            { data: createCamel('SNOW'), pos: [4, 0, 2] }
+        ];
+
+        camels.forEach(c => {
+            c.data.mesh.position.set(...c.pos);
+            scene.add(c.data.mesh);
+        });
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            camels.forEach((c, index) => {
+                const { mesh, legs, neckGroup, type } = c.data;
+                
+                // 1. Nhấp nhô thân
+                const speed = type === 'BABY' ? 3 : 1.5;
+                mesh.position.y = c.pos[1] + Math.sin(t * speed) * 0.1;
+
+                // 2. Gật gù cổ
+                neckGroup.rotation.z = Math.sin(t * speed) * 0.05;
+
+                // 3. Đung đưa chân (giả lập đang đi nhẹ)
+                legs.forEach((leg, i) => {
+                    const offset = (i % 2 === 0) ? 0 : Math.PI;
+                    leg.rotation.z = Math.sin(t * speed + offset) * 0.2;
+                });
+
+                // 4. Cho lạc đà xoay chậm quanh tâm để quan sát
+                mesh.rotation.y += 0.002 * (index + 1);
+            });
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

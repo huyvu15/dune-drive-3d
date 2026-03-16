@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Three.js Glowing Desert Galaxy</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #000; }
+        canvas { display: block; }
+        #ui {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #ffcc66;
+            font-family: 'Segoe UI', sans-serif;
+            background: rgba(0, 0, 0, 0.6);
+            padding: 12px;
+            border-radius: 8px;
+            pointer-events: none;
+            border: 1px solid rgba(255, 204, 102, 0.2);
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <b>Dải Vân Tinh Rực Sáng</b><br>
+        Tâm thiên hà đã được đẩy sáng tối đa
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(15, 15, 25);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // --- ÁNH SÁNG TÂM RỰC RỠ ---
+        // Ánh sáng vàng cam cực mạnh ở chính giữa
+        const coreLight = new THREE.PointLight(0xffaa00, 10, 50);
+        coreLight.position.set(0, 0, 0);
+        scene.add(coreLight);
+
+        // Ánh sáng phụ màu trắng xanh để tạo độ tương phản rực rỡ
+        const whiteLight = new THREE.PointLight(0xffffff, 5, 20);
+        scene.add(whiteLight);
+
+        // --- SAO NỀN TĨNH ---
+        const starsGeom = new THREE.BufferGeometry();
+        const starsPos = new Float32Array(8000 * 3);
+        for(let i=0; i<8000*3; i++) starsPos[i] = (Math.random() - 0.5) * 250;
+        starsGeom.setAttribute('position', new THREE.BufferAttribute(starsPos, 3));
+        scene.add(new THREE.Points(starsGeom, new THREE.PointsMaterial({ color: 0xffffff, size: 0.03 })));
+
+        // --- TẠO DẢI VÂN TINH ---
+        const galaxyParams = {
+            count: 40000,           // Tăng số lượng hạt lên rất cao
+            size: 0.12,             // Kích thước hạt vừa phải
+            radius: 28,
+            branches: 3,
+            spin: 1.3,
+            randomness: 0.2,
+            insideColor: 0xffffff,  // Tâm màu trắng sáng rực
+            middleColor: 0xffa500,  // Chuyển sang vàng cam
+            outsideColor: 0x0033ff  // Rìa màu xanh đêm sa mạc
+        };
+
+        const geometry = new THREE.BufferGeometry();
+        const positions = new Float32Array(galaxyParams.count * 3);
+        const colors = new Float32Array(galaxyParams.count * 3);
+
+        const colorInside = new THREE.Color(galaxyParams.insideColor);
+        const colorMiddle = new THREE.Color(galaxyParams.middleColor);
+        const colorOutside = new THREE.Color(galaxyParams.outsideColor);
+
+        for (let i = 0; i < galaxyParams.count; i++) {
+            const i3 = i * 3;
+            
+            // Tập trung hạt vào tâm hơn bằng hàm lũy thừa
+            const radius = Math.pow(Math.random(), 1.5) * galaxyParams.radius;
+            const spinAngle = radius * galaxyParams.spin;
+            const branchAngle = ((i % galaxyParams.branches) / galaxyParams.branches) * Math.PI * 2;
+
+            const randomX = (Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * galaxyParams.randomness * radius);
+            const randomY = (Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * galaxyParams.randomness * radius * 0.4);
+            const randomZ = (Math.pow(Math.random(), 3) * (Math.random() < 0.5 ? 1 : -1) * galaxyParams.randomness * radius);
+
+            positions[i3 + 0] = Math.cos(branchAngle + spinAngle) * radius + randomX;
+            positions[i3 + 1] = randomY;
+            positions[i3 + 2] = Math.sin(branchAngle + spinAngle) * radius + randomZ;
+
+            // NỘI SUY MÀU 3 LỚP: Trắng -> Cam -> Xanh
+            let mixedColor;
+            const ratio = radius / galaxyParams.radius;
+            if (ratio < 0.2) {
+                mixedColor = colorInside.clone().lerp(colorMiddle, ratio * 5);
+            } else {
+                mixedColor = colorMiddle.clone().lerp(colorOutside, (ratio - 0.2) * 1.25);
+            }
+
+            colors[i3 + 0] = mixedColor.r;
+            colors[i3 + 1] = mixedColor.g;
+            colors[i3 + 2] = mixedColor.b;
+        }
+
+        geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+        const material = new THREE.PointsMaterial({
+            size: galaxyParams.size,
+            sizeAttenuation: true,
+            depthWrite: false,
+            blending: THREE.AddBlending, // Đây là thứ tạo ra độ sáng rực khi các hạt đè lên nhau
+            vertexColors: true
+        });
+
+        const galaxyPoints = new THREE.Points(geometry, material);
+        scene.add(galaxyPoints);
+
+        // --- ANIMATION ---
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const t = clock.getElapsedTime();
+
+            galaxyPoints.rotation.y = t * 0.05;
+            
+            // Hiệu ứng "nhịp thở" cho tâm sáng
+            const pulse = 1 + Math.sin(t * 2) * 0.1;
+            coreLight.intensity = 10 * pulse;
+            
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>

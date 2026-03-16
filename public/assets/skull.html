@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <title>Low Poly Skull Desert</title>
+    <style>
+        body { margin: 0; overflow: hidden; background: #222; }
+        canvas { display: block; }
+    </style>
+</head>
+<body>
+
+<script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        }
+    }
+</script>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    // --- 1. THIẾT LẬP CƠ BẢN ---
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0xffcc88); // Màu trời hoàng hôn sa mạc
+    scene.fog = new THREE.Fog(0xffcc88, 5, 30);
+
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(3, 2, 5);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    // --- 2. ÁNH SÁNG ---
+    const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+    sun.position.set(5, 10, 2);
+    sun.castShadow = true;
+    scene.add(sun);
+
+    const ambient = new THREE.AmbientLight(0xffaa55, 0.4); 
+    scene.add(ambient);
+
+    // --- 3. MẶT ĐẤT (CÁT) ---
+    const groundGeo = new THREE.PlaneGeometry(100, 100, 20, 20);
+    // Làm gồ ghề mặt cát kiểu Low Poly
+    const pos = groundGeo.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+        pos.setZ(i, Math.random() * 0.2); 
+    }
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0xe2a76f, flatShading: true });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // --- 4. TẠO ĐẦU LÂU LOW POLY CHI TIẾT ---
+    const skullGroup = new THREE.Group();
+    const boneMat = new THREE.MeshStandardMaterial({ 
+        color: 0xeeeeee, 
+        flatShading: true,
+        roughness: 0.8
+    });
+
+    // 1. Hộp sọ (Cranium) - Dùng Sphere ít đa giác để có khối tròn nhưng vẫn Low Poly
+    const craniumGeo = new THREE.IcosahedronGeometry(0.8, 1);
+    const cranium = new THREE.Mesh(craniumGeo, boneMat);
+    cranium.position.y = 1.2;
+    cranium.scale.set(1, 1.1, 1);
+    cranium.castShadow = true;
+    skullGroup.add(cranium);
+
+    // 2. Xương gò má (Cheekbones)
+    const cheekGeo = new THREE.BoxGeometry(0.4, 0.3, 0.4);
+    const cheekL = new THREE.Mesh(cheekGeo, boneMat);
+    cheekL.position.set(-0.5, 0.9, 0.3);
+    cheekL.rotation.set(0.2, 0.2, 0.5);
+    skullGroup.add(cheekL);
+
+    const cheekR = cheekL.clone();
+    cheekR.position.x = 0.5;
+    cheekR.rotation.y = -0.2;
+    cheekR.rotation.z = -0.5;
+    skullGroup.add(cheekR);
+
+    // 3. Hàm dưới (Jaw)
+    const jawGeo = new THREE.BoxGeometry(0.7, 0.5, 0.7);
+    const jaw = new THREE.Mesh(jawGeo, boneMat);
+    jaw.position.set(0, 0.6, 0.2);
+    jaw.rotation.x = 0.2;
+    jaw.castShadow = true;
+    skullGroup.add(jaw);
+
+    // 4. Hốc mắt (Eyes) - Lõm sâu vào trong
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 1 });
+    const eyeGeo = new THREE.IcosahedronGeometry(0.25, 0);
+    const eyeL = new THREE.Mesh(eyeGeo, eyeMat);
+    eyeL.position.set(-0.35, 1.15, 0.6);
+    skullGroup.add(eyeL);
+
+    const eyeR = eyeL.clone();
+    eyeR.position.x = 0.35;
+    skullGroup.add(eyeR);
+
+    // 5. Hốc mũi (Nose)
+    const noseGeo = new THREE.ConeGeometry(0.1, 0.25, 3);
+    const nose = new THREE.Mesh(noseGeo, eyeMat);
+    nose.position.set(0, 0.9, 0.7);
+    nose.rotation.x = Math.PI;
+    skullGroup.add(nose);
+
+    // 6. Răng (Teeth) - Những khối nhỏ rời rạc
+    const toothGeo = new THREE.BoxGeometry(0.1, 0.15, 0.1);
+    for(let i = -2; i <= 2; i++) {
+        const tooth = new THREE.Mesh(toothGeo, boneMat);
+        tooth.position.set(i * 0.12, 0.75, 0.55);
+        tooth.rotation.x = 0.1;
+        skullGroup.add(tooth);
+    }
+
+    skullGroup.position.y = 0; // Để khớp với mặt đất
+    scene.add(skullGroup);
+
+    // Giữ bụi bay
+    const partGeo = new THREE.BufferGeometry();
+    const partCount = 500;
+    const posArr = new Float32Array(partCount * 3);
+    for(let i=0; i < partCount * 3; i++) {
+        posArr[i] = (Math.random() - 0.5) * 20;
+    }
+    partGeo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    const partMat = new THREE.PointsMaterial({ color: 0xffcc88, size: 0.05 });
+    const dust = new THREE.Points(partGeo, partMat);
+    scene.add(dust);
+
+    // --- 6. VÒNG LẶP RENDER ---
+    const controls = new OrbitControls(camera, renderer.domElement);
+    
+    function animate() {
+        requestAnimationFrame(animate);
+        // Làm bụi bay nhẹ
+        dust.rotation.y += 0.001;
+        renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+</script>
+</body>
+</html>
