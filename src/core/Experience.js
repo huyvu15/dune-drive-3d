@@ -1790,7 +1790,7 @@ export default class Experience {
             this.player = new YT.Player('youtube-player', {
                 height: '0',
                 width: '0',
-                videoId: 'Uv2ljVv96e8',
+                videoId: 's76BtB81Oms',
                 playerVars: {
                     'autoplay': 1,
                     'controls': 0,
@@ -1801,7 +1801,7 @@ export default class Experience {
                     'rel': 0,
                     'showinfo': 0,
                     'loop': 1,
-                    'playlist': 'Uv2ljVv96e8'
+                    'playlist': 's76BtB81Oms'
                 },
                 events: {
                     'onReady': () => {
