@@ -29,6 +29,14 @@ html {
   height: 100%;
 }
 
+/* Hide UI Text Elements */
+.hud-top-left, 
+.story-content, 
+.side-nav,
+.cartoon-card {
+  display: none !important;
+}
+
 .webgl {
   position: fixed;
   top: 0;

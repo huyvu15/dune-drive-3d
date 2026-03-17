@@ -466,7 +466,7 @@ export default class Experience {
 
         this.playerType = 'plane';
         this.playerModel = planeGroup;
-        this.playerModel.scale.set(2.0, 2.0, 2.0); // Máy bay to rõ rệt
+        this.playerModel.scale.set(3.5, 3.5, 3.5); // Phóng to máy bay hơn nữa
         this.playerGroup.add(this.playerModel);
         this.playerModel.traverse(c => { if(c.isMesh) c.castShadow = true; });
         this.interactableObjects.push(...planeGroup.children);
@@ -1195,8 +1195,22 @@ export default class Experience {
         this.groundGroup.add(this.signsGroup);
         
         const postGeo = new THREE.BoxGeometry(0.15, 2.5, 0.15);
-        const boardGeo = new THREE.BoxGeometry(1.2, 0.5, 0.1);
+        const boardGeo = new THREE.BoxGeometry(1.4, 0.6, 0.1); // Slightly larger
         const woodMat = new THREE.MeshStandardMaterial({ color: '#5d4037', flatShading: true });
+
+        // Create canvas text once for reuse
+        const canvas = document.createElement('canvas');
+        canvas.width = 512;
+        canvas.height = 128;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(0, 0, 512, 128);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 80px Outfit';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText("Glutisify", 256, 64);
+        const labelTexture = new THREE.CanvasTexture(canvas);
 
         for(let i=0; i<6; i++) {
             const sign = new THREE.Group();
@@ -1205,14 +1219,20 @@ export default class Experience {
             
             const board = new THREE.Mesh(boardGeo, woodMat);
             board.position.y = 0.8;
-            board.rotation.z = (Math.random() - 0.5) * 0.2;
+            board.rotation.z = (Math.random() - 0.5) * 0.1;
             sign.add(board);
+
+            // Add text label
+            const labelGeo = new THREE.PlaneGeometry(1.3, 0.5);
+            const labelMat = new THREE.MeshBasicMaterial({ map: labelTexture, transparent: true });
+            const label = new THREE.Mesh(labelGeo, labelMat);
+            label.position.set(0, 0.8, 0.06);
+            board.add(label);
             
             const x = (i * 30) - 70;
             const z = (i % 2 === 0 ? 3.5 : -3.5); // Near road edges
             sign.position.set(x, this.getTerrainHeight(x, z) + 3.5, z);
             sign.rotation.y = (i % 2 === 0 ? -0.5 : 0.5);
-            sign.rotation.z = (Math.random() - 0.5) * 0.1; // Weathered tilt
             
             const copy = sign.clone();
             copy.position.x += 160;
@@ -1846,9 +1866,9 @@ export default class Experience {
         };
 
         const milestones = [
-            { text: "JS CITY - 5 MI", x: -40, z: -4 },
-            { text: "2021: START", x: 0, z: 4 },
-            { text: "CREATIVITY - ∞", x: 40, z: -4.2 }
+            { text: "Glutisify", x: -40, z: -4 },
+            { text: "Glutisify", x: 0, z: 4 },
+            { text: "Glutisify", x: 40, z: -4.2 }
         ];
 
         milestones.forEach(m => {
@@ -1984,6 +2004,24 @@ export default class Experience {
             });
             const sign = new THREE.Mesh(signGeo, signMat);
             sign.position.set(4, 6, 2.5);
+            
+            // Add "Glutisify" text to station sign
+            const sCanvas = document.createElement('canvas');
+            sCanvas.width = 256;
+            sCanvas.height = 128;
+            const sCtx = sCanvas.getContext('2d');
+            sCtx.fillStyle = '#e67e22';
+            sCtx.fillRect(0, 0, 256, 128);
+            sCtx.fillStyle = '#ffffff';
+            sCtx.font = 'bold 40px Outfit';
+            sCtx.textAlign = 'center';
+            sCtx.textBaseline = 'middle';
+            sCtx.fillText("Glutisify", 128, 64);
+            const sTexture = new THREE.CanvasTexture(sCanvas);
+            const sLabel = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 1), new THREE.MeshBasicMaterial({ map: sTexture, transparent: true }));
+            sLabel.position.z = 0.11;
+            sign.add(sLabel);
+            
             group.add(sign);
 
             // Light from the station
@@ -2466,11 +2504,17 @@ export default class Experience {
     }
 
     showCarCard() {
-        const carCard = document.getElementById('car-card');
-        if (carCard) {
-            carCard.style.display = 'block';
-            setTimeout(() => carCard.classList.add('visible'), 10);
+        // Disabled as per user request to remove all screen text
+        return;
+        /*
+        const card = document.getElementById('car-card');
+        if (card) {
+            card.classList.add('visible');
+            setTimeout(() => {
+                card.classList.remove('visible');
+            }, 5000);
         }
+        */
     }
 
     syncPartToProgress() {
