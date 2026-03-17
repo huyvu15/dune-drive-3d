@@ -13,13 +13,15 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
-body, html {
+body,
+html {
   margin: 0;
   padding: 0;
   width: 100%;
   height: 100%;
   overflow: hidden;
-  background: #1a1a1a; /* Default fallback */
+  background: #1a1a1a;
+  /* Default fallback */
 }
 
 #app {
@@ -125,8 +127,15 @@ body, html {
 }
 
 @keyframes scrollAnim {
-  0% { transform: translate(-50%, 0); opacity: 1; }
-  100% { transform: translate(-50%, 15px); opacity: 0; }
+  0% {
+    transform: translate(-50%, 0);
+    opacity: 1;
+  }
+
+  100% {
+    transform: translate(-50%, 15px);
+    opacity: 0;
+  }
 }
 
 .side-nav {
@@ -197,7 +206,9 @@ body, html {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 /* --- Music Control UI --- */
@@ -206,14 +217,17 @@ body, html {
   top: 30px;
   right: 30px;
   pointer-events: auto;
-  z-index: 9999; /* Max priority */
+  z-index: 9999;
+  /* Max priority */
 }
 
 #music-toggle {
-  background: rgba(0, 0, 0, 0.4); /* Darker background for contrast */
+  background: rgba(0, 0, 0, 0.4);
+  /* Darker background for contrast */
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border: 2px solid rgba(255, 255, 255, 0.8); /* Solid white border */
+  border: 2px solid rgba(255, 255, 255, 0.8);
+  /* Solid white border */
   width: 55px;
   height: 55px;
   border-radius: 50%;
@@ -233,7 +247,8 @@ body, html {
 
 #music-toggle.playing {
   background: rgba(255, 255, 255, 0.3);
-  border-color: #ffcc66; /* Gold border when playing */
+  border-color: #ffcc66;
+  /* Gold border when playing */
   box-shadow: 0 0 20px rgba(255, 204, 102, 0.4);
 }
 
@@ -246,29 +261,57 @@ body, html {
 
 .music-icon-bars span {
   width: 4px;
-  background: rgba(255, 255, 255, 0.9); /* Bright white bars */
+  background: rgba(255, 255, 255, 0.9);
+  /* Bright white bars */
   border-radius: 2px;
   transition: all 0.3s ease;
 }
 
 /* Base heights for when paused */
-.music-icon-bars span:nth-child(1) { height: 8px; }
-.music-icon-bars span:nth-child(2) { height: 16px; }
-.music-icon-bars span:nth-child(3) { height: 11px; }
-.music-icon-bars span:nth-child(4) { height: 7px; }
+.music-icon-bars span:nth-child(1) {
+  height: 8px;
+}
+
+.music-icon-bars span:nth-child(2) {
+  height: 16px;
+}
+
+.music-icon-bars span:nth-child(3) {
+  height: 11px;
+}
+
+.music-icon-bars span:nth-child(4) {
+  height: 7px;
+}
 
 #music-toggle.playing .music-icon-bars span {
   animation: musicWave 1.2s infinite ease-in-out;
-  background: #ffcc66; /* Gold bars when playing */
+  background: #ffcc66;
+  /* Gold bars when playing */
 }
 
-#music-toggle.playing .music-icon-bars span:nth-child(2) { animation-delay: 0.1s; }
-#music-toggle.playing .music-icon-bars span:nth-child(3) { animation-delay: 0.2s; }
-#music-toggle.playing .music-icon-bars span:nth-child(4) { animation-delay: 0.3s; }
+#music-toggle.playing .music-icon-bars span:nth-child(2) {
+  animation-delay: 0.1s;
+}
+
+#music-toggle.playing .music-icon-bars span:nth-child(3) {
+  animation-delay: 0.2s;
+}
+
+#music-toggle.playing .music-icon-bars span:nth-child(4) {
+  animation-delay: 0.3s;
+}
 
 @keyframes musicWave {
-  0%, 100% { height: 6px; }
-  50% { height: 22px; }
+
+  0%,
+  100% {
+    height: 6px;
+  }
+
+  50% {
+    height: 22px;
+  }
 }
 
 /* --- Cartoon Card UI --- */
@@ -397,4 +440,255 @@ body, html {
     width: 85%;
     padding: 20px;
   }
+}
+
+/* ─── HUD: Góc trên trái – Đồng hồ & Mùa ─── */
+.hud-top-left {
+  position: fixed;
+  top: 28px;
+  left: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.hud-time-badge,
+.hud-season-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 50px;
+  padding: 7px 18px 7px 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  transition: all 0.6s ease;
+}
+
+.hud-clock-icon,
+.hud-season-icon {
+  font-size: 1.1rem;
+  line-height: 1;
+  filter: drop-shadow(0 0 4px rgba(255, 220, 100, 0.6));
+  animation: iconPulse 3s ease-in-out infinite;
+}
+
+.hud-time-text {
+  font-family: 'Outfit', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.6);
+}
+
+.hud-season-text {
+  font-family: 'Outfit', sans-serif;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #ffe082;
+  letter-spacing: 0.05em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  transition: color 1s ease;
+}
+
+@keyframes iconPulse {
+
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(1.12);
+  }
+}
+
+/* ─── Nav dots: 6 chấm cho 6 giai đoạn ─── */
+.nav-dot {
+  position: relative;
+}
+
+.nav-dot::before {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: transparent;
+  border: 2px solid transparent;
+  transition: border-color 0.3s;
+}
+
+.nav-dot.active::before {
+  border-color: var(--primary-color, #fff);
+}
+
+/* ─── Vehicle Menu UI ─── */
+.vehicle-menu {
+  position: fixed;
+  bottom: 60px;
+  left: 50%;
+  transform: translate(-50%, 50px);
+  width: 90%;
+  max-width: 450px;
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(15px);
+  border: 3px solid #1a1a1a;
+  border-radius: 20px;
+  padding: 25px;
+  pointer-events: auto;
+  z-index: 10001;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+}
+
+.vehicle-menu.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translate(-50%, 0);
+}
+
+.menu-close {
+  position: absolute;
+  top: 15px;
+  right: 20px;
+  font-size: 24px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.menu-title {
+  font-size: 1.2rem;
+  font-weight: 800;
+  margin: 0 0 20px 0;
+  text-align: center;
+  letter-spacing: 0.05em;
+  color: #1a1a1a;
+  border-bottom: 2px solid #eee;
+  padding-bottom: 10px;
+}
+
+.menu-section {
+  margin-bottom: 20px;
+}
+
+.menu-section h3 {
+  font-size: 0.8rem;
+  color: #666;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.vehicle-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  gap: 10px;
+}
+
+.v-opt {
+  background: white;
+  border: 2px solid #eee;
+  border-radius: 12px;
+  padding: 10px 5px;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.85rem;
+  transition: all 0.2s;
+}
+
+.v-opt:hover {
+  border-color: #ffcc80;
+  transform: translateY(-2px);
+}
+
+.v-opt.active {
+  background: #ffecb3;
+  border-color: #ffa000;
+  box-shadow: 0 4px 10px rgba(255, 160, 0, 0.2);
+}
+
+.control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 15px;
+}
+
+.control-row span {
+  font-weight: 600;
+}
+
+/* Switch styling */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 50px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .4s;
+}
+
+input:checked + .slider {
+  background-color: #43a047;
+}
+
+input:checked + .slider:before {
+  transform: translateX(26px);
+}
+
+.slider.round {
+  border-radius: 34px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
+}
+
+.speed-row {
+  margin-top: 10px;
+}
+
+#auto-speed-slider {
+  flex-grow: 1;
+  margin: 0 15px;
+  accent-color: #ffa000;
+}
+
+#speed-value {
+  min-width: 40px;
+  font-family: monospace;
 }

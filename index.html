@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="vi">
+
 <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
@@ -10,12 +11,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;700&display=swap" rel="stylesheet">
 
 </head>
+
 <body>
     <div id="app">
         <canvas class="webgl"></canvas>
-        
+
         <!-- UI Overlay -->
         <div class="overlay">
+            <!-- HUD: Đồng hồ & Mùa -->
+            <div class="hud-top-left">
+                <div class="hud-time-badge">
+                    <span class="hud-clock-icon">🕐</span>
+                    <span id="time-label" class="hud-time-text">05:30 AM</span>
+                </div>
+                <div class="hud-season-badge">
+                    <span class="hud-season-icon">🌿</span>
+                    <span id="season-label" class="hud-season-text">Mùa Xuân</span>
+                </div>
+            </div>
+
             <div class="story-content">
                 <header>
                     <span class="subtitle">---</span>
@@ -24,10 +38,10 @@
                 <div class="description-container">
                     <p class="description">---</p>
                 </div>
-                <div class="navigation-hint">
+                <!-- <div class="navigation-hint">
                     Scroll to explore
                     <div class="mouse-icon"></div>
-                </div>
+                </div> -->
             </div>
 
             <nav class="side-nav">
@@ -56,12 +70,53 @@
                 <div class="card-body">
                     <p>"Đang trên đường đi tìm cảm hứng... hoặc chỉ là đang lạc đường trong sa mạc này thôi!"</p>
                     <div class="card-stats">
-                        <div class="stat"><span>HP</span><div class="bar"><div class="fill" style="width: 80%"></div></div></div>
-                        <div class="stat"><span>ENERGY</span><div class="bar"><div class="fill" style="width: 40%"></div></div></div>
+                        <div class="stat"><span>HP</span>
+                            <div class="bar">
+                                <div class="fill" style="width: 80%"></div>
+                            </div>
+                        </div>
+                        <div class="stat"><span>ENERGY</span>
+                            <div class="bar">
+                                <div class="fill" style="width: 40%"></div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="card-footer">
                     🚀 <span>Level 99 Creative</span>
+                </div>
+            </div>
+
+            <!-- Vehicle Control Menu -->
+            <div id="vehicle-menu" class="vehicle-menu">
+                <div class="menu-close">&times;</div>
+                <h2 class="menu-title">TÙY CHỈNH PHƯƠNG TIỆN</h2>
+                
+                <div class="menu-section">
+                    <h3>CHỌN LOẠI</h3>
+                    <div class="vehicle-options">
+                        <button class="v-opt active" data-type="car">🚗 Ô tô</button>
+                        <button class="v-opt" data-type="bike">🏍️ Mô tô</button>
+                        <button class="v-opt" data-type="plane">✈️ Máy bay</button>
+                        <button class="v-opt" data-type="runner">🏃 Người chạy</button>
+                        <button class="v-opt" data-type="chicken">🐔 Con gà</button>
+                    </div>
+                </div>
+
+                <div class="menu-section">
+                    <h3>CHẾ ĐỘ LÁI</h3>
+                    <div class="control-row">
+                        <span>Tự động chạy</span>
+                        <label class="switch">
+                            <input type="checkbox" id="auto-drive-toggle">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="control-row speed-row">
+                        <span>Tốc độ</span>
+                        <input type="range" id="auto-speed-slider" min="0.1" max="10" step="0.1" value="1">
+                        <span id="speed-value">1.0</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -73,4 +128,5 @@
     </div>
     <script type="module" src="/src/main.js"></script>
 </body>
+
 </html>

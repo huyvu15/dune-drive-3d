@@ -39,7 +39,24 @@ export default class Experience {
         this.setupAdvancedFeatures();
         this.setupRoadDebris();
         this.setupBeetles();
-        this.setupCamels(); 
+        this.setupCityObjects();
+        this.setupOasisObjects();
+        this.currentBiomeIndex = 0; // 0: Desert, 1: City, 2: Oasis/River
+        this.currentSeasonIndex = 0;
+        // Player State
+        this.playerType = 'car';
+        this.isJumping = false;
+        this.jumpVelocity = 0;
+        this.jumpY = 0;
+        this.isAutoDriving = false;
+        this.autoSpeed = 1.0;
+        this.playerModel = null;
+        this.playerWheels = [];
+        this.mixers = []; // Store multiple mixers for animation
+        this.playerGroup = new THREE.Group();
+        this.playerGroup.position.set(2.5, -3.5, 0);
+        this.scene.add(this.playerGroup);
+
         this.setupCar(); 
         this.setupTropicalAssets();
         this.setupMilestones();
@@ -47,12 +64,16 @@ export default class Experience {
         this.setupFuelStation();
         this.setupPowerLines();
         this.setupSmallDetails();
+        this.setupPedestrians();     // 👤 Người ven đường
+        this.setupSeasonalEffects(); // 🍂 Hiệu ứng 4 mùa
         this.setupMusic(); 
         this.setupEvents();
         this.setupUI();
 
         this.update();
         this.goToPart(0);
+        
+        this.initVehicleMenu(); // Initialize UI listeners
 
         setTimeout(() => {
             const loader = document.querySelector('.loading-screen');
@@ -83,8 +104,8 @@ export default class Experience {
     }
 
     setupLights() {
-        const ambientLight = new THREE.AmbientLight(0xffcc80, 0.4); // Warm ambient
-        this.scene.add(ambientLight);
+        this.ambientLight = new THREE.AmbientLight(0xffcc80, 0.4); // Warm ambient
+        this.scene.add(this.ambientLight);
 
         this.dirLight = new THREE.DirectionalLight(0xffffff, 2.0);
         this.dirLight.position.set(-20, 15, 10); // Low angle for long shadows
@@ -205,74 +226,280 @@ export default class Experience {
     }
 
     setupCar() {
-        this.carGroup = new THREE.Group();
-        this.carGroup.position.set(2.5, -3.5, 0); // Position car on the right side
-        this.scene.add(this.carGroup);
-
-        this.carWheels = [];
-        this.carBody = new THREE.Group(); // Sub-group for bounce animation
-        this.carGroup.add(this.carBody);
-
+        console.log("Setting up car...");
+        if (this.playerModel) this.playerGroup.remove(this.playerModel);
+        this.playerWheels = [];
+        
         const loader = new GLTFLoader();
         loader.load('/assets/models/low-poly_truck_car_drifter.glb', (gltf) => {
-            const model = gltf.scene;
-            
-            // Adjust scale and rotation if needed (common for downloaded models)
-            model.scale.set(0.01, 0.01, 0.01);
-            model.rotation.y = 0; // Test default orientation
-            model.position.y = 0.3; // Sit on road level
-            
-            this.carBody.add(model);
+            this.playerType = 'car';
+            this.playerModel = gltf.scene;
+            this.playerModel.scale.set(0.01, 0.01, 0.01);
+            this.playerModel.position.y = 0.3; 
+            this.playerGroup.add(this.playerModel);
 
-            // --- Play built-in GLB animations (smoke, wheels, etc.) ---
             if (gltf.animations && gltf.animations.length > 0) {
-                this.carMixer = new THREE.AnimationMixer(model);
-                
-                console.log('Car animations found:');
-                gltf.animations.forEach((clip, i) => {
-                    console.log(` [${i}] ${clip.name} (${clip.duration.toFixed(2)}s)`);
-                    const action = this.carMixer.clipAction(clip);
-                    action.play(); // Play ALL animations (smoke, exhaust, etc.)
+                this.carMixer = new THREE.AnimationMixer(this.playerModel);
+                gltf.animations.forEach((clip) => {
+                    this.carMixer.clipAction(clip).play();
                 });
-            } else {
-                console.log('No animations found in car model.');
             }
 
-            // Traverse to find wheels and other parts
-            model.traverse((child) => {
+            this.playerModel.traverse((child) => {
                 if (child.isMesh) {
                     child.castShadow = true;
                     child.receiveShadow = true;
-
-                    // Detect wheels by name (case-insensitive)
                     const name = child.name.toLowerCase();
                     if (name.includes('wheel') || name.includes('rim') || name.includes('tire')) {
-                        // Store the parent group if it's a part of a wheel assembly
-                        // or the mesh itself if it's the main wheel part
-                        this.carWheels.push(child);
+                        this.playerWheels.push(child);
                     }
-                    
-                    // Add to interactable objects
                     this.interactableObjects.push(child);
                 }
             });
-
-            console.log(`Car Model Loaded. Found ${this.carWheels.length} wheels.`);
-            
-            // If no wheels found by name, we might need a fallback or manual tagging
-            if (this.carWheels.length === 0) {
-                console.warn("No wheels detected in car model. Manual mapping might be required.");
-            }
         }, undefined, (error) => {
             console.error('Error loading car model:', error);
-            // Fallback: simple box if loading fails
-            const box = new THREE.Mesh(new THREE.BoxGeometry(2, 1, 1), new THREE.MeshStandardMaterial({ color: 'red' }));
-            this.carBody.add(box);
+            // Fallback simple car
+            this.setupProceduralVehicle('car');
         });
+    }
 
-        // Dummy carRoof to avoid errors in update loop (since 3D model has its own roof)
-        this.carRoof = new THREE.Group(); 
-        this.carGroup.add(this.carRoof);
+    setupBike() {
+        if (this.playerModel) this.playerGroup.remove(this.playerModel);
+        this.playerWheels = [];
+        this.playerType = 'bike';
+        
+        const bikeGroup = new THREE.Group();
+        const bodyMat = new THREE.MeshStandardMaterial({ color: '#2ecc71', flatShading: true }); // Green superbike
+        const metalMat = new THREE.MeshStandardMaterial({ color: '#333', metalness: 0.9, roughness: 0.1 }); // Black metal
+        const seatMat = new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.8 });
+        const screenMat = new THREE.MeshStandardMaterial({ color: '#3498db', transparent: true, opacity: 0.6 });
+        
+        // --- Main Chassis ---
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(0.35, 0.5, 1.4), metalMat);
+        frame.position.y = 0.8;
+        bikeGroup.add(frame);
+        
+        // --- Fairing (Vỏ xe hầm hố) ---
+        const fairing = new THREE.Mesh(new THREE.BoxGeometry(0.45, 0.7, 1.0), bodyMat);
+        fairing.position.set(0, 1.1, 0.4);
+        bikeGroup.add(fairing);
+
+        // Windshield
+        const screen = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), screenMat);
+        screen.rotation.x = -Math.PI * 0.2;
+        screen.position.set(0, 1.5, 0.8);
+        bikeGroup.add(screen);
+
+        // Engine detail
+        const engine = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.6, 0.7), metalMat);
+        engine.position.set(0, 0.6, 0);
+        bikeGroup.add(engine);
+
+        // Gas Tank (Nhô cao)
+        const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.25, 0.8, 8), bodyMat);
+        tank.rotation.z = Math.PI / 2;
+        tank.position.set(0, 1.3, 0.2);
+        bikeGroup.add(tank);
+        
+        // Seat (Hai tầng)
+        const seat = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.1, 0.5), seatMat);
+        seat.position.set(0, 1.25, -0.3);
+        bikeGroup.add(seat);
+        const rearSeat = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.1, 0.3), seatMat);
+        rearSeat.position.set(0, 1.35, -0.6);
+        bikeGroup.add(rearSeat);
+
+        // Swingarm (Gắp xe)
+        const swingarm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.8), metalMat);
+        swingarm.position.set(0, 0.5, -0.6);
+        bikeGroup.add(swingarm);
+
+        // Exhaust (Ống xả lớn)
+        const exhaust = new THREE.Group();
+        const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.08, 0.8), metalMat);
+        pipe.rotation.x = Math.PI / 2 + 0.2;
+        exhaust.add(pipe);
+        exhaust.position.set(0.25, 0.6, -0.6);
+        bikeGroup.add(exhaust);
+        
+        // Wheels (Lốp to béo)
+        const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.35, 24);
+        wheelGeo.rotateZ(Math.PI / 2);
+        const wheelMat = new THREE.MeshStandardMaterial({ color: '#000', roughness: 0.9 });
+        
+        const wheelF = new THREE.Mesh(wheelGeo, wheelMat);
+        wheelF.position.set(0, 0.4, 1.1);
+        bikeGroup.add(wheelF);
+        this.playerWheels.push(wheelF);
+        
+        const wheelB = new THREE.Mesh(wheelGeo, wheelMat);
+        wheelB.position.set(0, 0.4, -1.0);
+        bikeGroup.add(wheelB);
+        this.playerWheels.push(wheelB);
+        
+        this.playerModel = bikeGroup;
+        this.playerGroup.add(this.playerModel);
+        this.playerModel.traverse(c => { if(c.isMesh) c.castShadow = true; });
+        this.interactableObjects.push(...bikeGroup.children);
+    }
+
+    setupRunner() {
+        if (this.playerModel) this.playerGroup.remove(this.playerModel);
+        this.playerWheels = [];
+        this.mixers = this.mixers.filter(m => m !== this.carMixer); // Clear player mixer
+        
+        const loader = new GLTFLoader();
+        // Dùng model Soldier hầm hố hơn cho "Người"
+        loader.load('/assets/models/soldier.glb', (gltf) => {
+            this.playerType = 'runner';
+            this.playerModel = gltf.scene;
+            this.playerModel.scale.set(1.5, 1.5, 1.5);
+            this.playerModel.position.y = 0;
+            this.playerGroup.add(this.playerModel);
+            
+            // Xử lý animation
+            const mixer = new THREE.AnimationMixer(this.playerModel);
+            this.carMixer = mixer;
+            this.mixers.push(mixer);
+            
+            // Tìm clip Walk hoặc Run
+            const clip = gltf.animations.find(a => a.name === 'Run' || a.name === 'Walk') || gltf.animations[0];
+            if (clip) {
+                const action = mixer.clipAction(clip);
+                action.play();
+            }
+            
+            this.playerModel.rotation.y = -Math.PI / 2; // Xoay lại 180 độ so với hướng PI/2 vừa rồi
+            this.playerModel.traverse(c => { if(c.isMesh) c.castShadow = true; });
+        });
+    }
+
+    setupChicken() {
+        if (this.playerModel) this.playerGroup.remove(this.playerModel);
+        this.playerWheels = [];
+        this.mixers = this.mixers.filter(m => m !== this.carMixer);
+        
+        const loader = new GLTFLoader();
+        // Thay con gà bằng mô hình Flamingo đẹp hơn nhiều
+        loader.load('/assets/models/flamingo.glb', (gltf) => {
+            this.playerModel = gltf.scene;
+            this.playerModel.scale.set(0.04, 0.04, 0.04);
+            this.playerType = 'chicken';
+            this.playerModel.userData.baseY = 2.5; // Tiếp tục hạ thấp theo yêu cầu
+            this.playerModel.position.y = 2.5;
+            this.playerModel.rotation.y = Math.PI / 2;
+            this.playerGroup.add(this.playerModel);
+            
+            const mixer = new THREE.AnimationMixer(this.playerModel);
+            this.carMixer = mixer;
+            this.mixers.push(mixer);
+            
+            if (gltf.animations.length > 0) {
+                mixer.clipAction(gltf.animations[0]).play();
+            }
+            
+            this.playerModel.traverse(c => { 
+                if(c.isMesh) {
+                    c.castShadow = true; 
+                    c.receiveShadow = true;
+                }
+            });
+        });
+    }
+
+    setupPlane() {
+        if (this.playerModel) this.playerGroup.remove(this.playerModel);
+        this.playerWheels = [];
+        
+        const planeGroup = new THREE.Group();
+        const mainMat = new THREE.MeshStandardMaterial({ color: '#f25346', flatShading: true }); // Red
+        const whiteMat = new THREE.MeshStandardMaterial({ color: '#d8d0d1', flatShading: true }); // Off-white
+        const metalMat = new THREE.MeshStandardMaterial({ color: '#b3b3b3', flatShading: true }); // Silver
+        const woodMat  = new THREE.MeshStandardMaterial({ color: '#59332e', flatShading: true }); // Propeller wood
+
+        // Cockpit (Cabin)
+        const cockpit = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.5, 0.6), mainMat);
+        cockpit.position.y = 0.5;
+        planeGroup.add(cockpit);
+
+        // Engine
+        const engine = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.5, 0.5), whiteMat);
+        engine.position.set(0.4, 0.5, 0);
+        planeGroup.add(engine);
+
+        // Tail
+        const tailIdx = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.2, 1.0), mainMat);
+        tailIdx.position.set(-0.35, 0.5, 0);
+        planeGroup.add(tailIdx);
+
+        // Vertical Fin
+        const fin = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.35, 0.35), mainMat);
+        fin.position.set(-0.7, 0.75, 0);
+        planeGroup.add(fin);
+
+        // Wings
+        const wings = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.08, 2.5), mainMat);
+        wings.position.set(0, 0.5, 0);
+        planeGroup.add(wings);
+
+        // Propeller
+        this.propeller = new THREE.Group();
+        const propHub = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.1, 0.1), metalMat);
+        this.propeller.add(propHub);
+        
+        const bladeGeo = new THREE.BoxGeometry(0.04, 0.8, 0.15);
+        const blade1 = new THREE.Mesh(bladeGeo, woodMat);
+        blade1.position.x = 0.1;
+        this.propeller.add(blade1);
+        
+        const blade2 = blade1.clone();
+        blade2.rotation.x = Math.PI / 2;
+        this.propeller.add(blade2);
+
+        this.propeller.position.set(0.5, 0.5, 0);
+        planeGroup.add(this.propeller);
+
+        // Pilot
+        const pilot = new THREE.Mesh(new THREE.SphereGeometry(0.12, 8, 8), new THREE.MeshStandardMaterial({ color: '#333' }));
+        pilot.position.set(0, 0.75, 0);
+        planeGroup.add(pilot);
+
+        this.playerType = 'plane';
+        this.playerModel = planeGroup;
+        this.playerModel.scale.set(2.0, 2.0, 2.0); // Máy bay to rõ rệt
+        this.playerGroup.add(this.playerModel);
+        this.playerModel.traverse(c => { if(c.isMesh) c.castShadow = true; });
+        this.interactableObjects.push(...planeGroup.children);
+    }
+
+    setupProceduralVehicle(type) {
+        if (type === 'car') {
+             const group = new THREE.Group();
+             const bodyMat = new THREE.MeshStandardMaterial({ color: '#e74c3c' });
+             const windowMat = new THREE.MeshStandardMaterial({ color: '#34495e' });
+             
+             const base = new THREE.Mesh(new THREE.BoxGeometry(2, 0.6, 4), bodyMat);
+             base.position.y = 0.5;
+             group.add(base);
+             
+             const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 1.8), windowMat);
+             cabin.position.set(0, 1.1, -0.2);
+             group.add(cabin);
+
+             const wheelGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.3, 12);
+             wheelGeo.rotateZ(Math.PI / 2);
+             const wheelMat = new THREE.MeshStandardMaterial({ color: '#111' });
+             
+             [[-0.9, 0.4, 1.2], [0.9, 0.4, 1.2], [-0.9, 0.4, -1.2], [0.9, 0.4, -1.2]].forEach(pos => {
+                 const w = new THREE.Mesh(wheelGeo, wheelMat);
+                 w.position.set(...pos);
+                 group.add(w);
+                 this.playerWheels.push(w);
+             });
+             
+             this.playerModel = group;
+             this.playerGroup.add(this.playerModel);
+        }
     }
 
     setupTropicalAssets() {
@@ -914,6 +1141,55 @@ export default class Experience {
         }
     }
 
+    setupCityObjects() {
+        this.cityGroup = new THREE.Group();
+        this.groundGroup.add(this.cityGroup);
+        const boxGeo = new THREE.BoxGeometry(4, 1, 4);
+        const winMat = new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#444' });
+
+        for(let i=0; i<30; i++) {
+            const h = 5 + Math.random() * 20;
+            const building = new THREE.Mesh(new THREE.BoxGeometry(4, h, 4), new THREE.MeshStandardMaterial({ color: '#555' }));
+            const x = (Math.random() * 160) - 80;
+            const z = (Math.random() > 0.5 ? 1 : -1) * (15 + Math.random() * 10);
+            building.position.set(x, h/2 - 3.5, z);
+            
+            // Add simplified windows
+            const windows = new THREE.Mesh(new THREE.BoxGeometry(4.1, h * 0.8, 4.1), winMat);
+            windows.position.copy(building.position);
+            
+            this.cityGroup.add(building);
+        }
+        this.cityGroup.visible = false;
+    }
+
+    setupOasisObjects() {
+        this.oasisGroup = new THREE.Group();
+        this.groundGroup.add(this.oasisGroup);
+        
+        // Simple palm trees using blocks
+        for(let i=0; i<40; i++) {
+            const palm = new THREE.Group();
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.4, 6), new THREE.MeshStandardMaterial({ color: '#5d4037' }));
+            trunk.position.y = 3;
+            palm.add(trunk);
+            
+            for(let j=0; j<5; j++) {
+                const leaf = new THREE.Mesh(new THREE.BoxGeometry(4, 0.1, 1), new THREE.MeshStandardMaterial({ color: '#2e7d32' }));
+                leaf.position.y = 6;
+                leaf.rotation.y = (j / 5) * Math.PI * 2;
+                leaf.rotation.z = 0.2;
+                palm.add(leaf);
+            }
+            
+            const x = (Math.random() * 160) - 80;
+            const z = (Math.random() > 0.5 ? 1 : -1) * (8 + Math.random() * 10);
+            palm.position.set(x, this.getTerrainHeight(x, z) + 3.5, z);
+            this.oasisGroup.add(palm);
+        }
+        this.oasisGroup.visible = false;
+    }
+
     setupSignposts() {
         this.signsGroup = new THREE.Group();
         this.groundGroup.add(this.signsGroup);
@@ -1270,6 +1546,15 @@ export default class Experience {
                 document.querySelector('.title').textContent = part.title;
                 document.querySelector('.description').textContent = part.content;
                 document.documentElement.style.setProperty('--primary-color', part.theme.primaryColor);
+
+                // Hiển thị nhãn thời gian
+                const timeEl = document.getElementById('time-label');
+                if (timeEl) timeEl.textContent = part.timeLabel || '';
+
+                // Hiển thị tên mùa
+                const season = this.config.seasons[this.currentSeasonIndex || 0];
+                const seasonEl = document.getElementById('season-label');
+                if (seasonEl) seasonEl.textContent = season ? season.name : '';
                 
                 // Update 3D Background and Fog smoothly
                 const cleanColor = part.theme.backgroundColor.substring(0, 7);
@@ -1279,7 +1564,7 @@ export default class Experience {
                     r: targetColor.r,
                     g: targetColor.g,
                     b: targetColor.b,
-                    duration: 1.2,
+                    duration: 1.5,
                     ease: 'power2.inOut',
                     onUpdate: () => {
                         if (this.scene.fog) {
@@ -1288,14 +1573,47 @@ export default class Experience {
                     }
                 });
 
+                // Cập nhật ánh sáng môi trường theo thời gian
+                if (this.ambientLight && part.theme.ambientColor) {
+                    const ambCol = new THREE.Color(part.theme.ambientColor);
+                    gsap.to(this.ambientLight.color, { r: ambCol.r, g: ambCol.g, b: ambCol.b, duration: 2.0 });
+                    gsap.to(this.ambientLight, { intensity: part.theme.ambientIntensity ?? 0.4, duration: 2.0 });
+                }
+                if (this.dirLight && part.theme.dirLightColor) {
+                    const dlCol = new THREE.Color(part.theme.dirLightColor);
+                    gsap.to(this.dirLight.color, { r: dlCol.r, g: dlCol.g, b: dlCol.b, duration: 2.0 });
+                    gsap.to(this.dirLight, { intensity: part.theme.dirLightIntensity ?? 1.5, duration: 2.0 });
+                    if (part.theme.dirLightPos) {
+                        gsap.to(this.dirLight.position, {
+                            x: part.theme.dirLightPos.x,
+                            y: part.theme.dirLightPos.y,
+                            z: part.theme.dirLightPos.z,
+                            duration: 3.0,
+                            ease: 'power1.inOut'
+                        });
+                    }
+                }
+
                 // Update Celestial Body - toggle Sun vs Moon
                 const celestialData = part.theme.celestial;
-                if (this.celestialBody && celestialData) {
-                    const isNightCelestial = celestialData.type === 'moon';
+                const isNight = celestialData.type === 'moon';
+                const isDawn = part.id === 'dawn' || part.id === 'predawn';
+                const isNoon = part.id === 'noon';
+                const isAfternoon = part.id === 'afternoon';
 
+                if (this.celestialBody && celestialData) {
                     // Toggle between detailed moon and sun
-                    if (this.sunGroup) this.sunGroup.visible = !isNightCelestial;
-                    if (this.moonGroup) this.moonGroup.visible = isNightCelestial;
+                    if (this.sunGroup) this.sunGroup.visible = !isNight;
+                    if (this.moonGroup) this.moonGroup.visible = isNight;
+
+                    // Đổi màu mặt trời theo thời gian
+                    if (!isNight && this.sunGroup) {
+                        const sunMesh = this.sunGroup.children[this.sunGroup.children.length - 1];
+                        if (sunMesh && sunMesh.material) {
+                            const sc = new THREE.Color(celestialData.color);
+                            gsap.to(sunMesh.material.color, { r: sc.r, g: sc.g, b: sc.b, duration: 2.0 });
+                        }
+                    }
 
                     // Scale the whole celestial group
                     gsap.to(this.celestialBody.scale, {
@@ -1307,198 +1625,181 @@ export default class Experience {
                     });
                 }
 
-                // Update Stars visibility based on night/day
-                const isNight = celestialData.type === 'moon';
+                // Stars / Milky Way - chỉ hiện khi đêm
+                const starOpacity = isNight ? (part.id === 'predawn' ? 0.5 : 0.8) : 0;
                 if (this.starsMat) {
-                    gsap.to(this.starsMat, {
-                        opacity: isNight ? 0.7 : 0,
-                        duration: 3.0,
-                        ease: "power2.inOut"
-                    });
+                    gsap.to(this.starsMat, { opacity: starOpacity, duration: 3.0, ease: "power2.inOut" });
                 }
                 if (this.mwMat) {
-                    gsap.to(this.mwMat, {
-                        opacity: isNight ? 0.7 : 0,
-                        duration: 3.0,
-                        ease: "power2.inOut"
-                    });
+                    gsap.to(this.mwMat, { opacity: isNight ? 0.8 : 0, duration: 3.0, ease: "power2.inOut" });
                 }
 
-                // Smoothly transition Cloud colors
+                // Cloud colors theo thời gian
                 if (this.cloudMat) {
-                    const targetCloudColor = new THREE.Color(isNight ? '#1a237e' : '#ffffff');
-                    const targetEmissive = new THREE.Color(isNight ? '#3949ab' : '#000000');
-                    
-                    gsap.to(this.cloudMat.color, {
-                        r: targetCloudColor.r,
-                        g: targetCloudColor.g,
-                        b: targetCloudColor.b,
-                        duration: 2.5
-                    });
-                    gsap.to(this.cloudMat.emissive, {
-                        r: targetEmissive.r,
-                        g: targetEmissive.g,
-                        b: targetEmissive.b,
-                        duration: 2.5
-                    });
-                }
-                if (this.galaxyCoreLight) {
-                    gsap.to(this.galaxyCoreLight, {
-                        intensity: isNight ? 10 : 0,
-                        duration: 3.0
-                    });
+                    let cloudHex = '#ffffff';
+                    let emissiveHex = '#000000';
+                    if (part.id === 'dawn' || part.id === 'afternoon') {
+                        cloudHex = '#ff9a5c'; emissiveHex = '#e65100';
+                    } else if (part.id === 'noon') {
+                        cloudHex = '#ffffff'; emissiveHex = '#e0e0e0';
+                    } else if (isNight) {
+                        cloudHex = '#1a237e'; emissiveHex = '#3949ab';
+                    }
+                    const tc = new THREE.Color(cloudHex);
+                    const te = new THREE.Color(emissiveHex);
+                    gsap.to(this.cloudMat.color, { r: tc.r, g: tc.g, b: tc.b, duration: 2.5 });
+                    gsap.to(this.cloudMat.emissive, { r: te.r, g: te.g, b: te.b, duration: 2.5 });
                 }
 
-                // Update Daytime Elements visibility
-                const skyElementsOpacity = isNight ? 0 : 1;
+                if (this.galaxyCoreLight) {
+                    gsap.to(this.galaxyCoreLight, { intensity: isNight ? 10 : 0, duration: 3.0 });
+                }
+
+                // God rays: chỉ ban ngày không phải bình minh và đêm
+                const rayVisible = !isNight && !isDawn;
+                const rayOpacity = rayVisible ? (isNoon ? 0.12 : 0.06) : 0;
                 this.rays.forEach(ray => {
-                    gsap.to(ray.material, { opacity: isNight ? 0 : 0.08, duration: 2.0 });
+                    gsap.to(ray.material, { opacity: rayOpacity, duration: 2.0 });
                 });
+
+                // Paper planes & balloons chỉ ban ngày
+                const skyShow = isNight ? 0 : 1;
                 this.paperPlanes.forEach(plane => {
-                    gsap.to(plane.scale, { x: skyElementsOpacity, y: skyElementsOpacity, z: skyElementsOpacity, duration: 1.5 });
+                    gsap.to(plane.scale, { x: skyShow, y: skyShow, z: skyShow, duration: 1.5 });
                 });
                 this.balloons.forEach(balloon => {
-                    gsap.to(balloon.scale, { x: skyElementsOpacity, y: skyElementsOpacity, z: skyElementsOpacity, duration: 2.0 });
+                    gsap.to(balloon.scale, { x: skyShow, y: skyShow, z: skyShow, duration: 2.0 });
                 });
 
+                // Người ven đường: Tint màu và độ trong suốt theo thời gian
+                if (this.pedestriansGroup) {
+                    const pedOpacity = (part.id === 'predawn') ? 0.3 : (isNight ? 0.5 : 1.0);
+                    
+                    // Màu tint tùy theo buổi
+                    let tintColor = '#ffffff';
+                    if (isNight) tintColor = '#3949ab'; // Xanh đêm
+                    else if (isDawn || isAfternoon) tintColor = '#ffccbc'; // Cam bình minh/hoàng hôn
+                    else if (isNoon) tintColor = '#ffffff'; // Sáng trưng
+                    
+                    const tCol = new THREE.Color(tintColor);
+
+                    this.pedestriansGroup.traverse(c => {
+                        if (c.isMesh && c.material) {
+                            gsap.to(c.material, { opacity: pedOpacity, duration: 2.0 });
+                            if (c.material.color) {
+                                gsap.to(c.material.color, { r: tCol.r, g: tCol.g, b: tCol.b, duration: 2.0 });
+                            }
+                        }
+                    });
+                }
+
                 content.classList.add('visible');
-            }, 800);
+            }, 600);
         }
 
         this.updateNav();
     }
 
-        // --- Setup Camels ---
+    // --- Setup Camels ---
     setupCamels() {
         this.camels = [];
         this.camelsGroup = new THREE.Group();
-        this.groundGroup.add(this.camelsGroup); // Attach to ground for parallax scrolling
+        this.groundGroup.add(this.camelsGroup); 
 
-        // HÀM TẠO LẠC ĐÀ (từ camel.html)
-        const createCamel = (type) => {
-            const group = new THREE.Group();
-            let config = {
-                color: 0xD2B48C,
-                scale: 1,
-                humps: 2,
-                bodyScale: [2, 1.3, 1.2],
-                neckLen: 1.2,
-                legH: 1.5
-            };
-
-            if (type === 'TANK') {
-                config = { color: 0x8B5A2B, scale: 1.3, humps: 1, bodyScale: [2.2, 1.5, 1.5], neckLen: 1.4, legH: 1.6 };
-            } else if (type === 'BABY') {
-                config = { color: 0xE6C291, scale: 0.6, humps: 2, bodyScale: [1.8, 1.2, 1.1], neckLen: 1.0, legH: 0.9 };
-            } else if (type === 'SNOW') {
-                config = { color: 0xF5F5F5, scale: 1, humps: 2, bodyScale: [2, 1.4, 1.3], neckLen: 0.8, legH: 1.3 };
-            }
-
-            const mat = new THREE.MeshStandardMaterial({ color: config.color, flatShading: true, roughness: 0.8 });
-
-            // Thân
-            const body = new THREE.Mesh(new THREE.BoxGeometry(...config.bodyScale), mat);
-            body.castShadow = true;
-            group.add(body);
-
-            // Bướu
-            if (config.humps === 1) {
-                const h = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.7, 0.8, 6), mat);
-                h.position.y = config.bodyScale[1]/2 + 0.3;
-                h.castShadow = true;
-                group.add(h);
-            } else {
-                [-0.4, 0.4].forEach(x => {
-                    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, 0.6, 6), mat);
-                    h.position.set(x, config.bodyScale[1]/2 + 0.2, 0);
-                    h.castShadow = true;
-                    group.add(h);
-                });
-            }
-
-            // Cổ & Đầu
-            const neckGroup = new THREE.Group();
-            const neck = new THREE.Mesh(new THREE.BoxGeometry(0.5, config.neckLen, 0.5), mat);
-            neck.position.set(config.bodyScale[0]/2 + 0.2, 0.5, 0);
-            neck.rotation.z = -Math.PI / 4;
-            neck.castShadow = true;
-            neckGroup.add(neck);
-
-            const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), mat);
-            head.position.set(config.bodyScale[0]/2 + 0.7, 1.1, 0);
-            head.castShadow = true;
-            neckGroup.add(head);
-            group.add(neckGroup);
-
-            // Chân
-            const legGeom = new THREE.BoxGeometry(0.2, config.legH, 0.2);
-            const legs = [];
-            const positions = [[0.7, 0.4], [0.7, -0.4], [-0.7, 0.4], [-0.7, -0.4]];
-            positions.forEach(p => {
-                const leg = new THREE.Mesh(legGeom, mat);
-                // Adjust position based on leg half height and body half height
-                leg.position.set(p[0], -config.bodyScale[1]/2 - config.legH/2 + 0.2, p[1]);
-                leg.castShadow = true;
-                group.add(leg);
-                legs.push(leg);
-            });
-
-            group.scale.set(config.scale, config.scale, config.scale);
-            
-            // Trả về object chứa cả group và các bộ phận cần animation
-            return { mesh: group, legs, neckGroup, type, config };
-        };
-
-        // Create the herd with variants and randomized placement
         const camelVariants = ['TANK', 'BABY', 'SNOW'];
-        const numCamels = 12; // More camels
+        const numCamels = 12; 
         
         for (let i = 0; i < numCamels; i++) {
             const type = camelVariants[Math.floor(Math.random() * camelVariants.length)];
-            const cData = createCamel(type);
+            const cData = this.createCamel(type);
             const camel = cData.mesh;
             
             const x = (Math.random() * 160) - 80; 
             
-            // Randomize Z: Some on road, some on hills, some far away
             let z;
             const rand = Math.random();
             if (rand < 0.2) { 
-                // Close to or on road
                 z = (Math.random() > 0.5 ? 1 : -1) * (3.5 + Math.random() * 2);
             } else if (rand < 0.6) {
-                // Background hills
                 z = -12 - Math.random() * 20;
             } else {
-                // Foreground / Side hills
                 z = 12 + Math.random() * 15;
             }
 
-            const lowestPoint = (cData.config.bodyScale[1]/2 + cData.config.legH/2 - 0.2) * cData.config.scale; 
-            const groundY = this.getTerrainHeight(x, z) + 3.5;
-            
-            camel.position.set(x, groundY + lowestPoint, z); 
-            // Random face direction
-            camel.rotation.y = Math.random() * Math.PI * 2; 
-            
-            cData.baseY = groundY + lowestPoint; 
-            cData.phase = Math.random() * Math.PI * 2; 
-
+            camel.position.set(x, this.getTerrainHeight(x, z) + 3.5, z);
             this.camelsGroup.add(camel);
-            this.camels.push(cData);
-
-            // Add duplicate for wrapping
-            const copyData = createCamel(type);
-            const copyCamel = copyData.mesh;
-            copyCamel.position.copy(camel.position);
-            copyCamel.position.x += 160;
-            copyCamel.rotation.y = camel.rotation.y;
-            copyData.baseY = cData.baseY;
-            copyData.phase = cData.phase;
-            
-            this.camelsGroup.add(copyCamel);
-            this.camels.push(copyData);
+            this.camels.push({ ...cData, phase: Math.random() * Math.PI * 2 });
         }
+    }
+
+    createCamel(type) {
+        const group = new THREE.Group();
+        let config = {
+            color: 0xD2B48C,
+            scale: 1,
+            humps: 2,
+            bodyScale: [2, 1.3, 1.2],
+            neckLen: 1.2,
+            legH: 1.5
+        };
+
+        if (type === 'TANK') {
+            config = { color: 0x8B5A2B, scale: 1.3, humps: 1, bodyScale: [2.2, 1.5, 1.5], neckLen: 1.4, legH: 1.6 };
+        } else if (type === 'BABY') {
+            config = { color: 0xE6C291, scale: 0.6, humps: 2, bodyScale: [1.8, 1.2, 1.1], neckLen: 1.0, legH: 0.9 };
+        } else if (type === 'SNOW') {
+            config = { color: 0xF5F5F5, scale: 1, humps: 2, bodyScale: [2, 1.4, 1.3], neckLen: 0.8, legH: 1.3 };
+        } else {
+            // Default ADULT fallback
+            config = { color: 0xD2B48C, scale: 1, humps: 2, bodyScale: [2, 1.3, 1.2], neckLen: 1.2, legH: 1.5 };
+        }
+
+        const mat = new THREE.MeshStandardMaterial({ color: config.color, flatShading: true, roughness: 0.8 });
+
+        const body = new THREE.Mesh(new THREE.BoxGeometry(...config.bodyScale), mat);
+        body.castShadow = true;
+        group.add(body);
+
+        if (config.humps === 1) {
+            const h = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.7, 0.8, 6), mat);
+            h.position.y = config.bodyScale[1]/2 + 0.3;
+            h.castShadow = true;
+            group.add(h);
+        } else {
+            [-0.4, 0.4].forEach(x => {
+                const h = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.5, 0.6, 6), mat);
+                h.position.set(x, config.bodyScale[1]/2 + 0.2, 0);
+                h.castShadow = true;
+                group.add(h);
+            });
+        }
+
+        const neckGroup = new THREE.Group();
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(0.5, config.neckLen, 0.5), mat);
+        neck.position.set(config.bodyScale[0]/2 + 0.2, 0.5, 0);
+        neck.rotation.z = -Math.PI / 4;
+        neck.castShadow = true;
+        neckGroup.add(neck);
+
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.5), mat);
+        head.position.set(config.bodyScale[0]/2 + 0.7, 1.1, 0);
+        head.castShadow = true;
+        neckGroup.add(head);
+        group.add(neckGroup);
+
+        const legGeom = new THREE.BoxGeometry(0.2, config.legH, 0.2);
+        const legs = [];
+        const positions = [[0.7, 0.4], [0.7, -0.4], [-0.7, 0.4], [-0.7, -0.4]];
+        positions.forEach(p => {
+            const leg = new THREE.Mesh(legGeom, mat);
+            leg.position.set(p[0], -config.bodyScale[1]/2 - config.legH/2 + 0.2, p[1]);
+            leg.castShadow = true;
+            group.add(leg);
+            legs.push(leg);
+        });
+
+        group.scale.set(config.scale, config.scale, config.scale);
+        return { mesh: group, legs, neckGroup, type, config, baseY: group.position.y };
     }
 
     setupMilestones() {
@@ -1779,14 +2080,219 @@ export default class Experience {
         });
     }
 
+    // ═══════════════════════════════════════════════
+    //  👤 NGƯỜI VEN ĐƯỜNG (Mô hình 3D)
+    // ═══════════════════════════════════════════════
+    setupPedestrians() {
+        if (this.pedestriansGroup) this.groundGroup.remove(this.pedestriansGroup);
+        if (this.pedestrians) {
+            this.pedestrians.forEach(p => {
+                if (p.mixer) {
+                    const idx = this.mixers.indexOf(p.mixer);
+                    if (idx > -1) this.mixers.splice(idx, 1);
+                }
+            });
+        }
+        this.pedestrians = [];
+        this.pedestriansGroup = new THREE.Group();
+        this.groundGroup.add(this.pedestriansGroup);
+
+        const loader = new GLTFLoader();
+        const gltfModels = ['/assets/models/soldier.glb', '/assets/models/robot.glb'];
+        
+        // Tạo 15 nhân vật ngẫu nhiên
+        for (let i = 0; i < 15; i++) {
+            const side = Math.random() > 0.5 ? 1 : -1;
+            const x = (Math.random() - 0.5) * 120;
+            const z = side * (Math.random() * 5 + 6);
+            
+            // Tỷ lệ: 30% Soldier, 30% Robot, 20% Lạc đà (procedural), 20% Người (procedural)
+            const rand = Math.random();
+            if (rand < 0.6) {
+                const modelPath = gltfModels[rand < 0.3 ? 0 : 1];
+                loader.load(modelPath, (gltf) => {
+                    const model = gltf.scene;
+                    const isSoldier = modelPath.includes('soldier');
+                    const scale = isSoldier ? 1.0 : 0.4;
+                    model.scale.set(scale, scale, scale);
+                    model.position.set(x, 0, z);
+                    
+                    const mixer = new THREE.AnimationMixer(model);
+                    this.mixers.push(mixer);
+                    const animName = Math.random() > 0.3 ? 'Walk' : 'Idle';
+                    const clip = gltf.animations.find(a => a.name.includes(animName)) || gltf.animations[0];
+                    mixer.clipAction(clip).play();
+                    
+                    let speed = (animName === 'Idle') ? 0 : (Math.random() * 0.02 + 0.01) * (Math.random() > 0.5 ? 1 : -1);
+                    model.rotation.y = speed > 0 ? 0 : Math.PI;
+
+                    this.pedestrians.push({ mesh: model, mixer, speed, originZ: z, walkRange: 3 + Math.random() * 5 });
+                    this.pedestriansGroup.add(model);
+                    model.traverse(c => { if(c.isMesh) c.castShadow = true; });
+                });
+            } else if (rand < 0.8) {
+                // Lạc đà (Procedural từ camel code)
+                const camelData = this.createCamel(Math.random() > 0.8 ? 'BABY' : 'ADULT');
+                const model = camelData.mesh;
+                model.scale.set(0.6, 0.6, 0.6);
+                model.position.set(x, 0, z);
+                model.rotation.y = Math.PI / 2;
+                
+                this.pedestrians.push({
+                    mesh: model,
+                    isProcedural: true,
+                    camelData: camelData,
+                    speed: (Math.random() * 0.01 + 0.005) * (Math.random() > 0.5 ? 1 : -1),
+                    originZ: z,
+                    walkRange: 4 + Math.random() * 4,
+                    phase: Math.random() * Math.PI * 2
+                });
+                this.pedestriansGroup.add(model);
+                model.traverse(c => { if(c.isMesh) c.castShadow = true; });
+            } else {
+                // Người (Procedural - Hình khối như lúc đầu)
+                const human = new THREE.Group();
+                const body = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.8, 0.25), new THREE.MeshStandardMaterial({ color: '#5d4037' }));
+                const head = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.3, 0.3), new THREE.MeshStandardMaterial({ color: '#8d6e63' }));
+                head.position.y = 0.6;
+                human.add(body, head);
+                human.position.set(x, 1, z);
+                
+                this.pedestrians.push({
+                    mesh: human,
+                    isStylized: true,
+                    speed: (Math.random() * 0.02 + 0.01) * (Math.random() > 0.5 ? 1 : -1),
+                    originZ: z,
+                    walkRange: 3 + Math.random() * 5,
+                    phase: Math.random() * Math.PI * 2
+                });
+                this.pedestriansGroup.add(human);
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════
+    //  🍂 HIỆU ỨNG 4 MÙA
+    // ═══════════════════════════════════════════════
+    setupSeasonalEffects() {
+        // Tạo hệ thống hạt cho tuyết rơi (Winter)
+        const count = 2000;
+        const geo = new THREE.BufferGeometry();
+        const pos = new Float32Array(count * 3);
+        const vel = new Float32Array(count); // Tốc độ rơi
+
+        for(let i=0; i<count; i++) {
+            pos[i*3] = (Math.random() - 0.5) * 160;
+            pos[i*3 + 1] = Math.random() * 40;
+            pos[i*3 + 2] = (Math.random() - 0.5) * 80;
+            vel[i] = 0.05 + Math.random() * 0.1;
+        }
+
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        this.seasonParticleVel = vel;
+
+        this.seasonParticleMat = new THREE.PointsMaterial({
+            color: '#ffffff',
+            size: 0.15,
+            transparent: true,
+            opacity: 0,
+            depthWrite: false,
+            blending: THREE.AdditiveBlending
+        });
+
+        this.seasonParticles = new THREE.Points(geo, this.seasonParticleMat);
+        this.scene.add(this.seasonParticles);
+    }
+
+    applySeasonTheme(seasonIndex) {
+        const season = this.config.seasons[seasonIndex];
+        if (!season) return;
+
+        // Tuyết rơi vào mùa đông (index 3)
+        const isWinter = (season.name.toLowerCase().includes('đông') || seasonIndex === 3);
+        if (this.seasonParticleMat) {
+            gsap.to(this.seasonParticleMat, { opacity: isWinter ? 0.8 : 0, duration: 3.0 });
+        }
+
+        // Cập nhật màu cây cỏ
+        const vegColor = new THREE.Color(season.vegetationColor);
+        [this.cactiGroup, this.bushesGroup, this.assetsGroup, this.oasisGroup].forEach(group => {
+            if (group) {
+                group.traverse(c => {
+                    if (c.isMesh && c.material && c.material.color) {
+                        gsap.to(c.material.color, { r: vegColor.r, g: vegColor.g, b: vegColor.b, duration: 3.0 });
+                    }
+                });
+            }
+        });
+
+        // Cập nhật nhãn mùa trên UI
+        const seasonEl = document.getElementById('season-label');
+        if (seasonEl) {
+            seasonEl.textContent = `${this.getBiomeName(this.currentBiomeIndex)} - ${season.name}`;
+            seasonEl.style.color = season.particleColor;
+        }
+    }
+
+    getBiomeName(index) {
+        const names = ['Sa mạc', 'Thành phố', 'Vùng sông nước'];
+        return names[index % 3];
+    }
+
+    applyBiomeTheme(biomeIndex) {
+        this.currentBiomeIndex = biomeIndex;
+        const type = biomeIndex % 3;
+        
+        let groundHue, fogColor, skyColor;
+        
+        if (type === 0) { // Desert
+            groundHue = '#d2b48c';
+            fogColor = '#ff9a5c';
+            skyColor = '#ff9a5c';
+            if (this.cactiGroup) this.cactiGroup.visible = true;
+            if (this.bushesGroup) this.bushesGroup.visible = false;
+            if (this.cityGroup) this.cityGroup.visible = false;
+            if (this.oasisGroup) this.oasisGroup.visible = false;
+        } else if (type === 1) { // City (Industrial/Dark)
+            groundHue = '#333333'; // Nhựa đường
+            fogColor = '#111111';
+            skyColor = '#222222';
+            if (this.cactiGroup) this.cactiGroup.visible = false;
+            if (this.bushesGroup) this.bushesGroup.visible = true;
+            if (this.cityGroup) this.cityGroup.visible = true;
+            if (this.oasisGroup) this.oasisGroup.visible = false;
+        } else { // Oasis / Green River
+            groundHue = '#1b5e20'; // Xanh đậm
+            fogColor = '#81c784';
+            skyColor = '#4fc3f7';
+            if (this.cactiGroup) this.cactiGroup.visible = false;
+            if (this.bushesGroup) this.bushesGroup.visible = true;
+            if (this.cityGroup) this.cityGroup.visible = false;
+            if (this.oasisGroup) this.oasisGroup.visible = true;
+        }
+
+        // Smoothly transition environment colors
+        const targetSky = new THREE.Color(skyColor);
+        const targetFog = new THREE.Color(fogColor);
+        const targetGround = new THREE.Color(groundHue);
+        
+        gsap.to(this.scene.background, { r: targetSky.r, g: targetSky.g, b: targetSky.b, duration: 5 });
+        gsap.to(this.scene.fog.color, { r: targetFog.r, g: targetFog.g, b: targetFog.b, duration: 5 });
+        
+        if (this.ground1 && this.ground1.material) {
+            gsap.to(this.ground1.material.color, { r: targetGround.r, g: targetGround.g, b: targetGround.b, duration: 5 });
+        }
+        
+        // Re-setup pedestrians for the new area
+        this.setupPedestrians();
+    }
+
     setupMusic() {
         this.musicPlaying = false;
         this.playerReady = false;
         const toggleBtn = document.getElementById('music-toggle');
         
-        // Define global callback for YT API
         window.onYouTubeIframeAPIReady = () => {
-            console.log('YouTube API Script Loaded');
             this.player = new YT.Player('youtube-player', {
                 height: '0',
                 width: '0',
@@ -1794,41 +2300,27 @@ export default class Experience {
                 playerVars: {
                     'autoplay': 1,
                     'controls': 0,
-                    'disablekb': 1,
-                    'fs': 0,
-                    'iv_load_policy': 3,
-                    'modestbranding': 1,
-                    'rel': 0,
-                    'showinfo': 0,
                     'loop': 1,
                     'playlist': 's76BtB81Oms'
                 },
                 events: {
                     'onReady': () => {
                         this.playerReady = true;
-                        console.log('YouTube Player Ready');
-                        
-                        // Try to autoplay (might be blocked by browser)
                         this.player.playVideo();
-                        
-                        // If it started playing, update UI
                         setTimeout(() => {
-                            if (this.player.getPlayerState() === 1) { // 1 = Playing
+                            if (this.player.getPlayerState() === 1) {
                                 this.musicPlaying = true;
                                 if (toggleBtn) toggleBtn.classList.add('playing');
                             }
                         }, 1000);
                     },
                     'onStateChange': (event) => {
-                        if (event.data === YT.PlayerState.ENDED) {
-                            this.player.playVideo();
-                        }
+                        if (event.data === YT.PlayerState.ENDED) this.player.playVideo();
                     }
                 }
             });
         };
 
-        // Dynamically load the YouTube API script to ensure callback is defined first
         if (!document.getElementById('yt-api-script')) {
             const tag = document.createElement('script');
             tag.id = 'yt-api-script';
@@ -1836,25 +2328,18 @@ export default class Experience {
             const firstScriptTag = document.getElementsByTagName('script')[0];
             firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
         } else if (window.YT && window.YT.Player) {
-            // If already loaded somehow, trigger manually
             window.onYouTubeIframeAPIReady();
         }
 
         if (toggleBtn) {
             toggleBtn.addEventListener('click', () => {
-                if (!this.playerReady) {
-                    console.log('Player not ready yet...');
-                    return;
-                }
-
+                if (!this.playerReady) return;
                 if (this.musicPlaying) {
                     this.player.pauseVideo();
                     toggleBtn.classList.remove('playing');
-                    toggleBtn.title = "Play Music";
                 } else {
                     this.player.playVideo();
                     toggleBtn.classList.add('playing');
-                    toggleBtn.title = "Pause Music";
                 }
                 this.musicPlaying = !this.musicPlaying;
             });
@@ -1869,8 +2354,8 @@ export default class Experience {
         });
 
         window.addEventListener('wheel', (event) => {
-            // Completely manual linear progression - NO SNAPPING
-            const sensitivity = 0.0003;
+            // Reduced sensitivity to make the map longer
+            const sensitivity = 0.0001; 
             this.targetScrollProgress += event.deltaY * sensitivity;
             
             // Only update the UI/Text, do NOT animate or snap the scrollProgress
@@ -1884,7 +2369,19 @@ export default class Experience {
 
         window.addEventListener('click', () => {
             if (this.hoveredObject) {
-                this.showCarCard();
+                // Click vào nhân vật -> Hiện menu chọn xe
+                this.showVehicleMenu();
+            } else {
+                // Click vào vị trí trống -> Nhảy lên
+                if (this.jumpY === 0) {
+                    this.jumpVelocity = 0.25;
+                }
+                
+                // Nếu đang mở menu khác thì ẩn đi
+                const menu = document.getElementById('vehicle-menu');
+                if (menu && menu.classList.contains('visible')) {
+                    menu.classList.remove('visible');
+                }
             }
         });
 
@@ -1898,6 +2395,76 @@ export default class Experience {
         }
     }
 
+    showVehicleMenu() {
+        const menu = document.getElementById('vehicle-menu');
+        if (menu) {
+            menu.classList.add('visible');
+        }
+    }
+
+    initVehicleMenu() {
+        // Close button
+        const closeBtn = document.querySelector('.menu-close');
+        const menu = document.getElementById('vehicle-menu');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                menu.classList.remove('visible');
+            });
+        }
+
+        // Vehicle Options
+        const options = document.querySelectorAll('.v-opt');
+        options.forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                options.forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+                
+                const type = opt.getAttribute('data-type');
+                this.switchVehicle(type);
+            });
+        });
+
+        // Auto Drive Toggle
+        const autoToggle = document.getElementById('auto-drive-toggle');
+        if (autoToggle) {
+            autoToggle.addEventListener('change', (e) => {
+                this.isAutoDriving = e.target.checked;
+            });
+        }
+
+        // Speed Slider
+        const speedSlider = document.getElementById('auto-speed-slider');
+        const speedValLabel = document.getElementById('speed-value');
+        if (speedSlider) {
+            speedSlider.addEventListener('input', (e) => {
+                this.autoSpeed = parseFloat(e.target.value);
+                speedValLabel.textContent = this.autoSpeed.toFixed(1);
+            });
+        }
+    }
+
+    switchVehicle(type) {
+        if (this.playerType === type) return;
+        this.playerType = type;
+        
+        switch(type) {
+            case 'car': this.setupCar(); break;
+            case 'bike': this.setupBike(); break;
+            case 'plane': this.setupPlane(); break;
+            case 'runner': this.setupRunner(); break;
+            case 'chicken': this.setupChicken(); break;
+        }
+        
+        // Visual feedback
+        gsap.from(this.playerGroup.scale, {
+            x: 0, y: 0, z: 0,
+            duration: 0.5,
+            ease: "back.out(1.7)"
+        });
+    }
+
     showCarCard() {
         const carCard = document.getElementById('car-card');
         if (carCard) {
@@ -1907,16 +2474,30 @@ export default class Experience {
     }
 
     syncPartToProgress() {
-        const total = 3.0;
+        const numParts = this.config.parts.length; // 6
+        const total = this.config.settings.totalCycle; // 6.0
         const progress = this.targetScrollProgress % total;
         const normalized = progress < 0 ? total + progress : progress;
         
-        // Stage 0 (Day): 0 to 1.5
-        // Stage 1 (Night): 1.5 to 3.0
-        let bestIndex = normalized < 1.5 ? 0 : 1;
+        // Mỗi giai đoạn chiếm 1.0 đơn vị scroll
+        const bestIndex = Math.min(Math.floor(normalized), numParts - 1);
 
         if (bestIndex !== this.currentPartIndex) {
             this.goToPart(bestIndex);
+        }
+
+        // Cập nhật mùa: mỗi 10.0 chu kỳ thay đổi một mùa (kéo dài map cực độ)
+        const seasonIndex = Math.floor(this.targetScrollProgress / 10.0) % 4;
+        if (seasonIndex !== this.currentSeasonIndex) {
+            this.currentPartIndex = -1; // Force label update
+            this.currentSeasonIndex = seasonIndex;
+            this.applySeasonTheme(seasonIndex);
+        }
+
+        // Cập nhật Biome: mỗi 40.0 chu kỳ (hết 4 mùa) đổi một vùng cảnh quan
+        const biomeIndex = Math.floor(this.targetScrollProgress / 40.0);
+        if (biomeIndex !== this.currentBiomeIndex) {
+            this.applyBiomeTheme(biomeIndex);
         }
     }
 
@@ -1927,6 +2508,16 @@ export default class Experience {
         const diff = (this.targetScrollProgress - this.scrollProgress);
         const velocity = diff * 0.08;
         this.scrollProgress += velocity;
+
+        // --- Animate Seasonal Particles (Snow) ---
+        if (this.seasonParticles && this.seasonParticleMat && this.seasonParticleMat.opacity > 0) {
+            const positions = this.seasonParticles.geometry.attributes.position.array;
+            for(let i=0; i<this.seasonParticleVel.length; i++) {
+                positions[i*3 + 1] -= this.seasonParticleVel[i];
+                if (positions[i*3 + 1] < 0) positions[i*3 + 1] = 40;
+            }
+            this.seasonParticles.geometry.attributes.position.needsUpdate = true;
+        }
 
         // --- Animate the Ground ---
         if (this.groundGroup) {
@@ -1956,47 +2547,69 @@ export default class Experience {
         }
 
         // --- Animate the Celestial Body (Cinematic Arc) ---
+        // 6 giai đoạn × 1.0 đơn vị mỗi giai đoạn = 6.0 tổng
+        // dawn(0), morning(1), noon(2), afternoon(3), night(4), predawn(5)
         if (this.celestialBody) {
-            const totalRange = 3.0; 
-            const progress = this.scrollProgress % totalRange; 
+            const totalRange = this.config.settings.totalCycle; // 6.0
+            const progress   = this.scrollProgress % totalRange;
             const normalized = progress < 0 ? totalRange + progress : progress;
+
+            // Giai đoạn hiện tại (0-5) và vị trí trong giai đoạn (0-1)
+            const stageIndex  = Math.min(Math.floor(normalized), 5);
+            const stageLocal  = normalized - stageIndex; // 0..1 bên trong giai đoạn
+
+            const currentPart = this.config.parts[stageIndex];
+            const celestialData = currentPart?.theme?.celestial;
+
+            // Mặt trời xuất hiện giai đoạn 0-3, Mặt trăng giai đoạn 4-5
+            const isNightStage = (stageIndex === 4 || stageIndex === 5);
+
+            if (this.sunGroup)  this.sunGroup.visible  = !isNightStage;
+            if (this.moonGroup) this.moonGroup.visible = isNightStage;
+
+            this.celestialBody.visible = true;
+
+            // Vị trí cung theo giai đoạn:
+            //   - Bình minh (0): mặt trời mọc phía đông thấp → giữa trời
+            //   - Sáng (1): giữa trời → hơi nghiêng
+            //   - Trưa (2): đỉnh cao nhất
+            //   - Chiều (3): hơi nghiêng → lặn phía tây
+            //   - Đêm (4): mặt trăng mọc, cung ngang bầu trời
+            //   - Rạng sáng (5): mặt trăng lặn dần
+
+            // arc từ trái sang phải: x từ -130 → +170 (span 300)
+            // Với 6 giai đoạn, mỗi giai đoạn chiếm 1/6 cung
+            const totalSpan = 300;
+            const stageWidth = totalSpan / 6;
+
+            const xStart = -130 + stageIndex * stageWidth;
+            const xCur   = xStart + stageLocal * stageWidth;
+
+            // chiều cao cung: sin theo toàn bộ hành trình
+            const globalProgress = (stageIndex + stageLocal) / 6; // 0..1 toàn chu kỳ
             
-            let isInsideArc = false;
-            let relProgress = 0;
-            let currentCel = null;
-
-            // Day Sun Arc: 0.1 to 1.4 (Aligned with Stage 1)
-            if (normalized >= 0.1 && normalized <= 1.4) {
-                isInsideArc = true;
-                relProgress = (normalized - 0.1) / 1.3;
-                currentCel = this.config.parts[0].theme.celestial;
-            } 
-            // Night Moon Arc: 1.6 to 2.9 (Aligned with Stage 2)
-            else if (normalized >= 1.6 && normalized <= 2.9) {
-                isInsideArc = true;
-                relProgress = (normalized - 1.6) / 1.3;
-                currentCel = this.config.parts[1].theme.celestial;
-            }
-
-            if (isInsideArc) {
-                this.celestialBody.visible = true;
-                const startPos = currentCel.pos;
-                // Expanded distance horizontally for wide FOV and deep Z
-                const travelDist = 300; 
-                this.celestialBody.position.x = (startPos.x - 130) + travelDist * relProgress;
-                const arcHeight = 55; // Raised arc height for deep Z 
-                this.celestialBody.position.y = startPos.y + Math.sin(relProgress * Math.PI) * arcHeight;
-                this.celestialBody.position.z = startPos.z;
+            let yOffset = 0;
+            if (!isNightStage) {
+                // Mặt trời: arc sin nửa đầu (0..0.66)
+                const sunT = globalProgress / 0.667;
+                yOffset = Math.sin(Math.min(sunT, 1) * Math.PI) * 50;
             } else {
-                this.celestialBody.visible = false;
-                this.celestialBody.position.y = -20; 
+                // Mặt trăng: arc sin nửa sau (0.67..1)
+                const moonT = (globalProgress - 0.667) / 0.333;
+                yOffset = Math.sin(Math.min(moonT, 1) * Math.PI) * 40;
             }
 
-            // Update God Rays position to match Celestial Body
+            const basePosZ  = celestialData?.pos?.z ?? -60;
+            const baseY     = celestialData?.pos?.y ?? 4;
+
+            this.celestialBody.position.x = xCur;
+            this.celestialBody.position.y = baseY + yOffset;
+            this.celestialBody.position.z = basePosZ;
+
+            // Update God Rays position to match Sun
             if (this.rayGroup) {
                 this.rayGroup.position.copy(this.celestialBody.position);
-                // Rays only visible when sun is up (not moon or hidden)
-                this.rayGroup.visible = (isInsideArc && currentCel.type === 'sun');
+                this.rayGroup.visible = (!isNightStage && stageIndex > 0 && stageIndex < 4);
                 this.rayGroup.rotation.y += 0.005;
             }
 
@@ -2072,7 +2685,7 @@ export default class Experience {
                  this.milkyWay.rotation.z = Math.sin(elapsedTime * 0.1) * 0.02;
             }
         }
-        if (this.galaxyCoreLight && this.currentPartIndex === 1) {
+        if (this.galaxyCoreLight && (this.currentPartIndex === 4 || this.currentPartIndex === 5)) {
             // Pulse the intensity at night
             const pulse = 1 + Math.sin(elapsedTime * 1.5) * 0.2;
             this.galaxyCoreLight.intensity = 10 * pulse;
@@ -2134,47 +2747,129 @@ export default class Experience {
             b.children[1].rotation.x += 0.1;
         });
 
-        // --- Animate Camels ---
-        this.camels.forEach((c) => {
-            const { mesh, legs, neckGroup, type, phase, baseY } = c;
-            
-            // 1. Nhấp nhô thân
-            const walkSpeed = type === 'BABY' ? 3 : 1.5;
-            mesh.position.y = baseY + Math.sin(elapsedTime * walkSpeed + phase) * 0.1;
+        // --- Animate Pedestrians (Người ven đường) ---
+        if (this.pedestrians) {
+            this.pedestrians.forEach((p) => {
+                if (!p.mesh) return;
+                
+                if (p.isProcedural && p.camelData) {
+                    // Cử động Lạc đà procedural
+                    const { mesh, legs, neckGroup, phase } = p.camelData;
+                    const walkT = elapsedTime * 2.0 + p.phase;
+                    mesh.position.y = Math.sin(walkT) * 0.1;
+                    neckGroup.rotation.z = Math.sin(walkT) * 0.05;
+                    legs.forEach((leg, i) => {
+                        const offset = (i % 2 === 0) ? 0 : Math.PI;
+                        leg.rotation.z = Math.sin(walkT + offset) * 0.2;
+                    });
+                }
 
-            // 2. Gật gù cổ
-            neckGroup.rotation.z = Math.sin(elapsedTime * walkSpeed + phase) * 0.05;
+                if (p.isProcedural && p.camelData) {
+                    // Cử động Lạc đà procedural
+                    const { mesh, legs, neckGroup } = p.camelData;
+                    const walkT = elapsedTime * 2.0 + p.phase;
+                    mesh.position.y = Math.sin(walkT) * 0.1;
+                    neckGroup.rotation.z = Math.sin(walkT) * 0.05;
+                    legs.forEach((leg, i) => {
+                        const offset = (i % 2 === 0) ? 0 : Math.PI;
+                        leg.rotation.z = Math.sin(walkT + offset) * 0.2;
+                    });
+                } else if (p.isStylized) {
+                    // Hình khối nhảy nhót
+                    const t = elapsedTime * 5 + p.phase;
+                    p.mesh.position.y = 1 + Math.abs(Math.sin(t)) * 0.2;
+                    p.mesh.rotation.z = Math.sin(t) * 0.1;
+                }
 
-            // 3. Đung đưa chân (giả lập đang đi nhẹ)
-            legs.forEach((leg, i) => {
-                const offset = (i % 2 === 0) ? 0 : Math.PI;
-                leg.rotation.z = Math.sin(elapsedTime * walkSpeed + phase + offset) * 0.2;
+                // Di chuyển vị trí
+                if (Math.abs(p.mesh.position.z - p.originZ) > p.walkRange) {
+                    p.speed *= -1;
+                    if (p.isProcedural || p.isStylized) {
+                        p.mesh.rotation.y += Math.PI;
+                    } else {
+                        p.mesh.rotation.y = p.speed > 0 ? Math.PI : 0;
+                    }
+                }
+                p.mesh.position.z += p.speed;
             });
-        });
+        }
 
-        // --- Animate the Car ---
-        if (this.carGroup) {
-            // Wheels spin proportional to speed
+        // --- Animate Seasonal Particles ---
+        if (this.seasonParticles && this.seasonParticleMat && this.seasonParticleMat.opacity > 0.01) {
+            const pos = this.seasonParticles.geometry.attributes.position;
+            for (let i = 0; i < this.seasonParticleCount; i++) {
+                const v = this.seasonParticleVelocities[i];
+                pos.setX(i, pos.getX(i) + v.x);
+                let py = pos.getY(i) + v.y;
+                if (py < -5) py = 25 + Math.random() * 5;
+                pos.setY(i, py);
+                pos.setZ(i, pos.getZ(i) + v.z);
+            }
+            pos.needsUpdate = true;
+        }
+
+        // --- Animate the Player (Car/Bike/Human/etc.) ---
+        if (this.playerGroup) {
+            // Auto driving logic - Slower for longer experience
+            if (this.isAutoDriving) {
+                this.targetScrollProgress += 0.003 * this.autoSpeed;
+                this.syncPartToProgress();
+            }
+
+            // Wheels spin proportional to speed (only if wheels exist)
             const wheelSpinSpeed = velocity * 150;
-            this.carWheels.forEach(wheel => {
+            this.playerWheels.forEach(wheel => {
                 wheel.rotation.z -= wheelSpinSpeed;
             });
             
-            // Suspension: car body slightly bounces based on speed
-            const bounce = Math.abs(Math.sin(elapsedTime * 20)) * Math.abs(velocity) * 1.5;
-            this.carBody.position.y = bounce; // Applied to sub-group
-            this.carRoof.position.y = bounce; 
+            // Suspension: player body slightly bounces based on speed
+            const speedFact = Math.abs(velocity);
+            const bounce = Math.abs(Math.sin(elapsedTime * 15)) * speedFact * 1.2;
+            
+            // Jump physics
+            this.jumpVelocity -= 0.01;
+            this.jumpY += this.jumpVelocity;
+            if (this.jumpY < 0) {
+                this.jumpY = 0;
+                this.jumpVelocity = 0;
+            }
 
-            // Chassis tilts backwards on acceleration, forwards on deceleration/reverse
-            const targetTilt = velocity * 8; 
-            // Smoothly interpolate the tilt
-            this.carGroup.rotation.z += (targetTilt - this.carGroup.rotation.z) * 0.1;
+            if (this.playerModel) {
+                // Determine vertical offset based on type
+                if (this.playerType === 'chicken') {
+                    // Flying flamingo: constant height + subtle hover wing flap motion
+                    const hover = Math.sin(elapsedTime * 3) * 0.3;
+                    this.playerModel.position.y = (this.playerModel.userData.baseY || 2.5) + hover + this.jumpY;
+                } else if (this.playerType === 'plane') {
+                    // Plane flying height (Original low height)
+                    const hover = Math.sin(elapsedTime * 3) * 0.2;
+                    this.playerModel.position.y = 1.0 + hover + this.jumpY;
+                } else {
+                    // Ground vehicles (car/bike/runner)
+                    this.playerModel.position.y = bounce + this.jumpY;
+                }
+                
+                // Bike leaning
+                if (this.playerType === 'bike') {
+                    this.playerModel.rotation.z = Math.sin(elapsedTime * 2) * 0.03 + velocity * 2;
+                }
+            }
+
+            // Chassis tilts backwards on acceleration, forwards on deceleration
+            const targetTilt = velocity * 10; 
+            this.playerGroup.rotation.z += (targetTilt - this.playerGroup.rotation.z) * 0.1;
         }
 
-        // Advance GLB built-in animations (smoke/exhaust/etc.)
-        if (this.carMixer) {
-            const deltaTime = 1 / 60; // ~60fps delta
-            this.carMixer.update(deltaTime);
+        // Advance Mixer animations (car smoke, camel walk, etc.)
+        this.mixers.forEach(mixer => {
+            mixer.update(1/60);
+        });
+
+        // Spin Airplane Propeller
+        if (this.playerType === 'plane' && this.propeller) {
+            this.propeller.rotation.x += 0.3 + Math.abs(velocity) * 5;
+            // Float effect already handled above
+            this.playerModel.rotation.z = Math.sin(elapsedTime * 2) * 0.05 + velocity * 5;
         }
 
         // (Assets section removed as we are using cacti)
